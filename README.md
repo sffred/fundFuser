@@ -2,6 +2,8 @@
 A fundFuser using Cov and Cholesky Decomposition for working in China mainland
 
 # Current results
+|基金代码|基金名称|建议比例（%）|
+|----|----|----|
 | 161036 | 富国中证娱乐主题指数增强型         |  6.34 |
 | 160213 | 国泰纳斯达克100指数                |  6.10 |
 | 002939 | 广发创新升级混合                   |  5.41 |
