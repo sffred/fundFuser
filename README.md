@@ -2,7 +2,7 @@
 A fundFuser using Cov and Cholesky Decomposition for working in China mainland
 
 # Current results
-| 建议比例 | 基金代码 | 基金名称 | 
+| 建议比例（%） | 基金代码 | 基金名称 | 
 | ----|----|----|
 |  8.12 | 160213 | 国泰纳斯达克100指数 |
 |  7.20 | 002939 | 广发创新升级混合 |
