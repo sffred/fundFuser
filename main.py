@@ -1,108 +1,124 @@
 #%%
 import json
+import time
 
 # fundcode=open('fr.txt').read()
 # fundcode=json.loads(fundcode)
 
 # Use your picked fundcode file here. An example is provided.
-manualFundcode=open('mfl3.txt').read().splitlines()
-
-fundcode=[]
-for fc in manualFundcode:
-    fundcode.append([fc])
+fundcode=list(set(open('mfl2.txt').read().splitlines()))
 
 import requests
 import re
+
 # http://fund.eastmoney.com/pingzhongdata/***.js
 
 def getNetValue(fcode):
     url="http://fund.eastmoney.com/pingzhongdata/"+fcode+".js"
-    res=requests.get(url).text
+    count=3
+    while count>0:
+        try:
+            res=requests.get(url).text
+            break
+        except:
+            time.sleep(3)
+            count-=1
     temp=re.search("(?<=Data_ACWorthTrend = ).*?(?=;)",res)
     if(temp):
         netValue=temp.group()
-        return netValue
+        return json.loads(netValue)
     else:
         return "[]"
 
-# Produce net-value dict
-
-netValueDict={}
-
-#%%
-for fund in fundcode:
-    netValueDict[fund[0]]=json.loads(getNetValue(fund[0]))
-    print(fund[0],len(netValueDict[fund[0]]))
-#    time.sleep(0.3)
-
-
-#%%
-import numpy
-import time
-import math
-
-# Hyper parameters are set here
-loopBackTime=400
-startTime=int(time.time()/86400-loopBackTime)
-endTime=int(time.time()/86400)
-gap=16
-
-def pretreatment(netValueList):
+def getValueSeries(data, st, et):
     stepDict={}
-    for netValueKey in netValueList:
-        time=int((netValueKey[0]+gap*3600000)/86400000)
-        if(time>=startTime):
+    for netValueKey in data:
+        time=netValueKey[0]//86400000
+        if(time>=st):
             stepDict[time]=netValueKey[1]
-    for i in range(startTime, endTime):
+    for i in range(st, et):
         if(stepDict.get(i)):
             temp=stepDict[i]
             break
 
     #print(temp)
-    for i in range(startTime, endTime):
+    for i in range(st, et):
         if(stepDict.get(i)):
             temp=stepDict[i]
         else:
             stepDict[i]=temp
-    stepDict=dict(sorted(stepDict.items(), key=lambda d:d[0]))
-    return stepDict
+    output=[]
+    for i in range(st,et):
+        output.append(stepDict[i])
+    return output
 
+def logGapRate(series,gap,rate):
+    x=numpy.zeros(len(series)-gap)
+    for i in range(len(series)-gap):
+        x[i]=math.log(series[i+gap]/series[i])-math.log(rate)*gap/365
+    return x
 
-def stepData(stepDict):
-    data={}
-    for i in range(startTime, endTime-gap):
-        temp=math.log(stepDict[i+gap]/stepDict[i])
-        data[i]=temp
-    return data
+#%%
+import numpy
+import time
+import math
+import random
 
-fundlist={}
-for fund in netValueDict.items():
-    if(len(fund[1])>loopBackTime):
-        fundlist[fund[0]]=stepData(pretreatment(fund[1]))
+# Hyper parameters are set here
+loopBackTime=1600
+startTime=int(time.time()/86400-loopBackTime)
+endTime=int(time.time()/86400)
+gap=16
 
 seriesArr=[]
+fundcode_new=[]
+for i in range(len(fundcode)):
+    a=getNetValue(fundcode[i])
+    if(a[0][0]//86400000<startTime):
+        fundcode_new.append(fundcode[i])
+        seriesArr.append(logGapRate(getValueSeries(a,startTime,endTime),gap,1.03))
 
-for fund in fundlist.items():
-    temp=[]
-    for time in range(startTime, endTime-gap):
-        temp.append(fund[1][time])
-    seriesArr.append(numpy.array(temp))
-
+fundcode=fundcode_new
 #%%
-finalData=numpy.array(seriesArr)
-dataCov=numpy.cov(finalData)
-dataMean=numpy.mean(finalData,axis=1)-math.log(1.0323)*gap/365
-L=numpy.linalg.cholesky(dataCov)
-Y=numpy.dot(numpy.linalg.inv(L.T),numpy.dot(numpy.linalg.inv(L),dataMean))
-Y=Y+abs(Y)
-Y=Y/numpy.linalg.norm(Y,ord=1)
+n=len(seriesArr)
+presevered=list(range(n))
+Data=numpy.array(seriesArr)
+
+
+test=1
+while n>0 and test:
+    test=0
+    Cov=numpy.cov(Data)
+    Mean=numpy.mean(Data,axis=1)
+    L=numpy.linalg.cholesky(Cov)
+    a0=numpy.dot(numpy.linalg.inv(L),Mean)
+    tl=list(range(n))
+    random.shuffle(tl)
+    for i in tl:
+        L1=numpy.delete(L,i,axis=0)
+        u,s,vt=numpy.linalg.svd(L1)
+        v=vt[-1,:]
+        if(numpy.dot(a0,v)*numpy.dot(v,L[i,:])<0):
+            presevered.pop(i)
+            Data=numpy.delete(Data,i,axis=0)
+            n-=1
+            test=1
+            break
+
+Y=numpy.dot(numpy.linalg.inv(L),Mean)
+X=numpy.dot(numpy.linalg.inv(L.T),Y)
+
+Sharp=numpy.dot(Mean,X)/math.sqrt(numpy.dot(numpy.dot(X.T,Cov),X))
+X=X/numpy.linalg.norm(X,ord=1)
+print(n,numpy.dot(Mean,X)*365/gap,Sharp*math.sqrt(365/gap))
+#%%
 
 output={}
-for i in range(len(fundlist)):
-    output[list(fundlist.keys())[i]]=Y[i]
+for i in range(len(presevered)):
+    output[fundcode[presevered[i]]]=X[i]
 Pa=sorted(output.items(), key=lambda d:d[1], reverse = True)
 #Pa=output.items()
-#%%
+
 
 def str_count2(str):
     ans=0
